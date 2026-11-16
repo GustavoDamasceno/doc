@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Central Moto — Arquitetura</title>
+<style>
+  :root {
+    --ink: #142033;
+    --muted: #5d6b7c;
+    --line: #d9e0e8;
+    --blue: #1d4e89;
+    --alert: #b42318;
+    --amber: #9a3412;
+    --ok: #17663a;
+    --bg: #f4f1ea;
+    --card: #fff;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0e1726; color: var(--ink); font-family: "Segoe UI", sans-serif; }
+  .deck { height: 100%; }
+  .slide { display: none; height: 100%; padding: 36px 56px 68px; background: var(--bg); }
+  .slide.on { display: flex; flex-direction: column; }
+  .kicker { margin: 0 0 6px; color: var(--blue); font-size: 13px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase; }
+  h1 { margin: 0 0 10px; font-size: 40px; line-height: 1.08; }
+  h2 { margin: 0 0 14px; font-size: 30px; line-height: 1.15; }
+  p { margin: 0 0 10px; font-size: 18px; line-height: 1.4; }
+  .muted { color: var(--muted); }
+  .row { display: flex; gap: 14px; min-height: 0; }
+  .grow { flex: 1; min-width: 0; }
+  .card, table, pre { background: var(--card); border: 1px solid var(--line); border-radius: 12px; }
+  .card { padding: 14px 16px; }
+  .card h3 { margin: 0 0 6px; font-size: 17px; }
+  .card p, .card li { font-size: 15px; line-height: 1.35; }
+  .card ul { margin: 6px 0 0; padding-left: 18px; }
+  table { width: 100%; border-collapse: collapse; overflow: hidden; }
+  th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--line); font-size: 15px; vertical-align: top; }
+  th { color: var(--muted); font-size: 12px; letter-spacing: .04em; text-transform: uppercase; }
+  code, .mono { font-family: Consolas, "Courier New", monospace; }
+  pre { margin: 0; padding: 14px 16px; background: #142033; color: #e7eef8; font-family: Consolas, monospace; font-size: 15px; line-height: 1.45; overflow: auto; border: 0; }
+  .grid { display: grid; gap: 12px; }
+  .g2 { grid-template-columns: 1fr 1fr; }
+  .g3 { grid-template-columns: 1fr 1fr 1fr; }
+  .g4 { grid-template-columns: repeat(4, 1fr); }
+  .pill { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 13px; font-weight: 700; }
+  .red { background: #fdeceb; color: var(--alert); }
+  .blue { background: #e8f0fa; color: var(--blue); }
+  .amber { background: #fff4e5; color: var(--amber); }
+  .green { background: #e7f6ee; color: var(--ok); }
+  .shot { width: 100%; max-height: 390px; object-fit: contain; object-position: left top; background: #fff; border: 1px solid var(--line); border-radius: 12px; }
+  .caption { margin-top: 8px; color: var(--muted); font-size: 15px; }
+  .pipe, .seq { display: flex; align-items: stretch; gap: 0; }
+  .node, .stepb {
+    position: relative; flex: 0 0 auto; background: #fff; border: 1px solid var(--line);
+    border-top: 4px solid var(--blue); border-radius: 12px; padding: 12px;
+    opacity: 0; transform: translateY(14px);
+  }
+  .pipe > .node { flex: 1 1 0; }
+  .node strong, .stepb strong { display: block; margin-bottom: 4px; font-size: 15px; }
+  .node span, .stepb span { display: block; color: var(--muted); font-size: 13px; line-height: 1.35; }
+  .link { width: 36px; display: flex; align-items: center; justify-content: center; position: relative; }
+  .link i {
+    display: block; height: 3px; width: 26px; border-radius: 2px; position: relative;
+    background: repeating-linear-gradient(90deg, var(--blue) 0 7px, transparent 7px 12px);
+    background-size: 24px 3px;
+  }
+  .link i::after { content: ""; position: absolute; right: -2px; top: -4px; border: 5px solid transparent; border-left: 7px solid var(--blue); }
+  .slide.on .node, .slide.on .stepb { animation: rise .55s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(var(--i) * .16s); }
+  .slide.on .link i { animation: ants .55s linear infinite; }
+  .vlink { height: 22px; width: 3px; margin: 0 auto; background: repeating-linear-gradient(var(--blue) 0 7px, transparent 7px 12px); background-size: 3px 24px; position: relative; }
+  .slide.on .vlink { animation: antsv .55s linear infinite; }
+  .vlink::after { content: ""; position: absolute; left: -4px; bottom: -2px; border: 5px solid transparent; border-top: 7px solid var(--blue); }
+  @keyframes antsv { to { background-position: 0 24px; } }
+  .split { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .band { display: flex; flex-direction: column; gap: 8px; }
+  .band + .band { margin-top: 18px; }
+  .bandlabel { margin: 0; color: var(--blue); font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+  .slide.on .packet { animation: travel 2.8s ease-in-out .4s infinite; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  @keyframes draw { to { width: 22px; } }
+  @keyframes fade { to { opacity: 1; } }
+  @keyframes travel {
+    0% { left: 4%; opacity: 0; }
+    12% { opacity: 1; }
+    88% { opacity: 1; }
+    100% { left: 92%; opacity: 0; }
+  }
+  .track { position: relative; height: 18px; margin: 8px 8px 0; }
+  .packet {
+    position: absolute; top: 2px; width: 14px; height: 14px; border-radius: 50%;
+    background: var(--alert); box-shadow: 0 0 0 6px rgba(180,35,24,.15); opacity: 0;
+  }
+  .states { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .state {
+    min-width: 120px; text-align: center; background: #fff; border: 1px solid var(--line);
+    border-radius: 12px; padding: 12px 10px; font-weight: 700; opacity: 0; transform: scale(.92);
+  }
+  .slide.on .state { animation: pop .45s cubic-bezier(.2,.8,.2,1) forwards; animation-delay: calc(var(--i) * .18s); }
+  @keyframes pop { to { opacity: 1; transform: none; } }
+  .miniarrow { color: var(--blue); font-weight: 700; opacity: 0; }
+  .slide.on .miniarrow { animation: fade .3s ease forwards; animation-delay: calc(var(--i) * .18s); }
+  .layers { display: grid; grid-template-rows: repeat(4, 1fr); gap: 8px; flex: 1; }
+  .layer { display: grid; grid-template-columns: 140px 1fr; gap: 10px; align-items: center; opacity: 0; transform: translateX(-16px); }
+  .slide.on .layer { animation: slidein .5s ease forwards; animation-delay: calc(var(--i) * .16s); }
+  @keyframes slidein { to { opacity: 1; transform: none; } }
+  .tag { background: var(--blue); color: #fff; border-radius: 8px; padding: 10px 8px; text-align: center; font-size: 13px; font-weight: 700; }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip { background: #fff; border: 1px solid var(--line); border-radius: 8px; padding: 8px 10px; font-size: 14px; }
+  .foot { position: fixed; left: 0; right: 0; bottom: 0; display: flex; justify-content: space-between; align-items: center; padding: 10px 24px; color: #d5deea; background: #0e1726; font-size: 14px; }
+  .foot button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; padding: 6px 10px; }
+  .cover { justify-content: center; background: #142033; color: #fff; }
+  .cover .kicker { color: #9ec0ea; }
+  .cover h1 { font-size: 64px; }
+  .cover p { color: #d5deea; font-size: 22px; max-width: 780px; }
+  .seqcol { display: flex; flex-direction: column; gap: 8px; }
+  .seqcol { position: relative; }
+  .seqcol::before {
+    content: ""; position: absolute; left: 13px; top: 16px; bottom: 16px; width: 3px;
+    background: repeating-linear-gradient(#1d4e89 0 8px, transparent 8px 14px);
+    transform: scaleY(0); transform-origin: top; border-radius: 2px;
+  }
+  .slide.on .seqcol::before { animation: grow 1.1s ease forwards; }
+  @keyframes grow { to { transform: scaleY(1); } }
+  .seqline { display: grid; grid-template-columns: 28px 1fr; gap: 10px; align-items: center; opacity: 0; transform: translateX(12px); }
+  .slide.on .seqline { animation: slidein .45s ease forwards; animation-delay: calc(var(--i) * .2s); }
+  .dotn { width: 28px; height: 28px; border-radius: 50%; background: var(--blue); color: #fff; display: grid; place-items: center; font-weight: 700; font-size: 14px; position: relative; z-index: 1; }
+  .diagram { position: relative; flex: 1; min-height: 0; }
+  .diagram svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .wire { fill: none; stroke: #1d4e89; stroke-width: 3; stroke-linecap: round; stroke-dasharray: 7 7; }
+  .slide.on .wire { animation: ants 0.7s linear infinite; }
+  .wire.hot { stroke: #b42318; }
+  .wire.amber { stroke: #b54708; }
+  .wire.ok { stroke: #17663a; }
+  @keyframes ants { to { background-position: 24px 0; } }
+  .dnode {
+    position: absolute; background: #fff; border: 1px solid var(--line); border-top: 4px solid var(--blue);
+    border-radius: 12px; padding: 8px 10px; opacity: 0; transform: translateY(10px);
+  }
+  .dnode strong { display: block; font-size: 14px; line-height: 1.2; }
+  .dnode span { display: block; color: var(--muted); font-size: 12px; line-height: 1.3; margin-top: 3px; }
+  .slide.on .dnode { animation: rise .5s cubic-bezier(.2,.7,.2,1) forwards; animation-delay: calc(var(--i) * .12s); }
+  .dnode.hot { border-top-color: var(--alert); }
+  .dnode.wait { border-top-color: #b54708; }
+  .dnode.ok { border-top-color: var(--ok); }
+  .dnode.live { box-shadow: 0 0 0 0 rgba(29,78,137,.35); }
+  .slide.on .dnode.live { animation: rise .5s cubic-bezier(.2,.7,.2,1) forwards, glow 1.8s ease .8s infinite; }
+  @media (max-width: 800px) {
+    html, body { height: auto; min-height: 100%; overflow: auto; }
+    .deck { height: auto; min-height: 100%; }
+    .slide { height: auto; min-height: 100%; padding: 20px 16px 84px; overflow: visible; }
+    .slide.on { display: flex; }
+    h1 { font-size: 28px; }
+    h2 { font-size: 22px; }
+    p, .caption { font-size: 16px; }
+    .cover { min-height: 100vh; }
+    .cover h1 { font-size: 36px; }
+    .cover p { font-size: 18px; }
+    .g2, .g3, .g4, .split { grid-template-columns: 1fr; }
+    .row, .pipe { flex-direction: column; }
+    .layers { flex: none; }
+    .layer { grid-template-columns: 1fr; }
+    .link { width: 100%; height: 28px; }
+    .link i { transform: rotate(90deg); }
+    .shot { max-height: none; }
+    pre { font-size: 13px; white-space: pre-wrap; word-break: break-word; }
+    table { display: block; overflow-x: auto; }
+    th, td { font-size: 14px; }
+    .foot { padding: 8px 12px; gap: 8px; }
+    .foot span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .foot button { min-width: 44px; min-height: 44px; font-size: 20px; }
+  }
+  @keyframes glow {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(29,78,137,.25); }
+    50% { box-shadow: 0 0 0 7px rgba(29,78,137,0); }
+  }
+</style>
+</head>
+<body>
+<div class="deck" id="deck">
+
+<section class="slide cover on">
+  <p class="kicker">TCC · Engenharia de Computação · UFC</p>
+  <h1>Central Moto</h1>
+  <p>Arquitetura do protótipo. O campo publica a posição. A central confirma com o motociclista e destaca quando a operação precisa ligar para a emergência.</p>
+  <p>Gustavo Damasceno de Campos</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">O que este sistema é</p>
+  <h2>Três responsabilidades, um limite claro</h2>
+  <div class="grid g3">
+    <article class="card"><h3>Posição</h3><p>O campo publica latitude, longitude e estado por MQTT. A detecção da queda não é calculada nesta aplicação web.</p></article>
+    <article class="card"><h3>Confirmação</h3><p>Com suspeita de queda, o WhatsApp pergunta se a pessoa está bem. O prazo é de 5 minutos.</p></article>
+    <article class="card"><h3>Decisão</h3><p>Pedido de ajuda, ou o fim do prazo sem resposta, pede para ligar. A central não disca.</p></article>
+  </div>
+  <p style="margin-top:16px;">Quem publica no MQTT já manda <code>Status: true</code> ou <code>false</code>. A contribuição é a arquitetura que liga posição, confirmação e a decisão da central.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Visão geral</p>
+  <h2>Do sistema embarcado até quem está na moto</h2>
+  <div class="band">
+    <p class="bandlabel">Posição</p>
+    <div class="pipe">
+      <div class="node" style="--i:0"><strong>Sistema embarcado</strong><span>Detecta a queda e publica a posição.</span></div>
+      <div class="link"><i></i></div>
+      <div class="node" style="--i:1"><strong>HiveMQ</strong><span>broker.hivemq.com, tópico DadosDeMonitoramento_TCC2.</span></div>
+      <div class="link"><i></i></div>
+      <div class="node" style="--i:2"><strong>MqttMonitor</strong><span>Valida o JSON. Se faltar rua, chama o geocoding.</span></div>
+      <div class="link"><i></i></div>
+      <div class="node" style="--i:3"><strong>Store</strong><span>Última posição em memória, chave User.</span></div>
+    </div>
+  </div>
+  <div class="band">
+    <p class="bandlabel">Tela, confirmação e resposta</p>
+    <div class="pipe">
+      <div class="node" style="--i:4"><strong>Interface</strong><span>Lê o Store a cada 5 s. Desenha o Google Maps.</span></div>
+      <div class="link"><i></i></div>
+      <div class="node" style="--i:5"><strong>Operação</strong><span>Copia a leitura, aplica telefone, prazo e situação.</span></div>
+      <div class="link"><i></i></div>
+      <div class="node" style="--i:6"><strong>CallMeBot</strong><span>GET em whatsapp.php. Só fala com quem gerou a chave.</span></div>
+      <div class="link"><i></i></div>
+      <div class="node" style="--i:7;border-top-color:var(--alert)"><strong>WhatsApp</strong><span>Estou bem ou Preciso de ajuda volta em /c/{id}.</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Visão geral</p>
+  <h2>Quatro tempos diferentes</h2>
+  <table>
+    <tr><th>Tempo</th><th>Onde</th><th>O que faz</th></tr>
+    <tr><td>Contínuo</td><td><code>MqttMonitorService</code></td><td>Fica conectado ao broker e reconecta 5 segundos depois de uma queda.</td></tr>
+    <tr><td>A cada mensagem</td><td>Ingestão</td><td>Atualiza a posição daquele <code>User</code>.</td></tr>
+    <tr><td>A cada 5 segundos</td><td><code>painel.js</code></td><td>O navegador pede <code>GET /Home/Estado</code> e redesenha a tela.</td></tr>
+    <tr><td>5 minutos</td><td><code>OperacaoService</code></td><td>Prazo para o motociclista responder ao WhatsApp.</td></tr>
+  </table>
+  <p style="margin-top:16px;">A tela não abre uma conexão MQTT. O navegador só lê o estado que o servidor já montou.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Componentes</p>
+  <h2>Como o processo está dividido</h2>
+  <div class="layers">
+    <div class="layer" style="--i:0"><div class="tag">Apresentação</div><div class="chips"><span class="chip">Painel</span><span class="chip">Mapa ao vivo</span><span class="chip">Frota</span><span class="chip">Emergência</span><span class="chip">/c/{id}</span><span class="chip">painel.js e mapa.js</span></div></div>
+    <div class="layer" style="--i:1"><div class="tag">Aplicação</div><div class="chips"><span class="chip">HomeController</span><span class="chip">ConfirmacaoController</span><span class="chip">OperacaoService</span></div></div>
+    <div class="layer" style="--i:2"><div class="tag">Estado</div><div class="chips"><span class="chip">MonitoramentoStore, em memória</span><span class="chip">data/contatos.json</span></div></div>
+    <div class="layer" style="--i:3"><div class="tag">Entrada</div><div class="chips"><span class="chip">MqttMonitorService</span><span class="chip">GeocodingService</span></div></div>
+  </div>
+  <p class="muted" style="margin-top:12px;"><code>Program.cs</code> registra store, operação e MQTT como singleton. O geocoding usa <code>AddHttpClient</code>, o cliente HTTP gerenciado, não um <code>new HttpClient()</code> por mensagem.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Componentes</p>
+  <h2>O que cada serviço guarda</h2>
+  <div class="grid g2">
+    <article class="card"><h3>MonitoramentoStore</h3><p>Última posição de cada motociclista. Só em memória. A chave é o <code>User</code>.</p></article>
+    <article class="card"><h3>OperacaoService</h3><p>Telefone, chave do WhatsApp, confirmações e o prazo de 5 minutos. Copia a leitura antes de aplicar isso.</p></article>
+    <article class="card"><h3>MqttMonitorService</h3><p>Serviço em segundo plano. O cliente MQTT não desliga quando a página HTTP termina.</p></article>
+    <article class="card"><h3>GeocodingService</h3><p>Geocodificação reversa. Só entra quando o JSON não traz <code>Endereco</code>.</p></article>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Entrada MQTT</p>
+  <h2>Conexão com o broker</h2>
+  <div class="grid g3">
+    <article class="card"><h3>Broker</h3><p><code>broker.hivemq.com</code> na porta <code>1883</code>. QoS pelo menos uma vez.</p></article>
+    <article class="card"><h3>Tópico</h3><p><code>DadosDeMonitoramento_TCC2</code>. É o único canal da frota.</p></article>
+    <article class="card"><h3>Cliente</h3><p><code>Gudamasc-</code> mais 8 caracteres aleatórios. Um id fixo colide no broker público.</p></article>
+  </div>
+  <p style="margin-top:16px;">Se a conexão cai, o serviço marca a central como desconectada, espera 5 segundos e tenta de novo. Para ver as mensagens no navegador, o cliente WebSocket usa o mesmo broker em <code>mqtt-dashboard.com:8884</code> com SSL. O broker público não guarda histórico: só aparece o que for publicado depois do Subscribe.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Entrada MQTT</p>
+  <h2>Uma mensagem, uma moto</h2>
+  <div class="row">
+    <pre class="grow">{
+  "Latitude": -3.807,
+  "Longitude": -38.54,
+  "User": "PEDRO",
+  "Status": true,
+  "Endereco": "Messejana, Fortaleza - CE"
+}</pre>
+    <table class="grow">
+      <tr><th>Campo</th><th>Papel</th></tr>
+      <tr><td>Latitude, Longitude</td><td>Ponto no mapa.</td></tr>
+      <tr><td>User</td><td>Identidade. É a chave da frota.</td></tr>
+      <tr><td>Status</td><td><code>true</code> é suspeita de queda. <code>false</code> é em rota.</td></tr>
+      <tr><td>Endereco</td><td>Opcional. Vazio chama o geocoding.</td></tr>
+    </table>
+  </div>
+  <p style="margin-top:14px;">O nome das propriedades não diferencia maiúsculas. <code>User</code> vazio ou JSON inválido é ignorado. O mesmo <code>User</code> substitui a posição. Um nome novo entra na frota. Por isso 15 publicações com nomes diferentes aparecem juntas, e uma segunda do Pedro só move o Pedro.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">GeocodingService</p>
+  <h2>Endereço legível, só quando falta</h2>
+  <div class="pipe">
+    <div class="node" style="--i:0"><strong>Mensagem válida</strong><span>User preenchido. JSON aceito.</span></div>
+    <div class="link"><i></i></div>
+    <div class="node" style="--i:1"><strong>Endereco vazio?</strong><span>Decisão em RegistrarMensagemAsync.</span></div>
+  </div>
+  <div class="vlink"></div>
+  <div class="split">
+    <div class="node ok" style="--i:2;border-top-color:var(--ok)"><strong>Não. Usa o texto</strong><span>Não chama o Google. Os 15 testes já traziam o bairro.</span></div>
+    <div class="node" style="--i:3;border-top-color:var(--alert)"><strong>Sim. GET geocode/json</strong><span>Uma vez, na ingestão. Outra publicação sem rua consulta de novo.</span></div>
+  </div>
+  <div class="vlink"></div>
+  <div class="node" style="--i:4"><strong>Store</strong><span>A leitura fica com o endereço. A cada 5 segundos a tela só relê esse texto.</span></div>
+</section>
+
+<section class="slide">
+  <p class="kicker">GeocodingService</p>
+  <h2>O mapa e o endereço são duas APIs</h2>
+  <div class="grid g2">
+    <article class="card"><h3>No navegador</h3><p>O mapa desenha o marcador com a latitude e a longitude. Usa a Maps JavaScript API e a mesma chave <code>GoogleMaps:ApiKey</code>.</p></article>
+    <article class="card"><h3>No servidor</h3><p><code>ObterEnderecoAsync</code> chama a Geocoding API. O texto da ficha e do balão é o <code>formatted_address</code>, ou o <code>Endereco</code> que já veio no MQTT.</p></article>
+  </div>
+  <p style="margin-top:16px;">Não há nova ida ao Google a cada atualização de 5 segundos. O resultado fica na leitura em memória.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">GeocodingService · a API</p>
+  <h2>Um GET, sem corpo e sem cabeçalho próprio</h2>
+  <p>Mensagem sem endereço:</p>
+  <pre>{ "Latitude": -3.807, "Longitude": -38.54, "User": "PEDRO", "Status": true }</pre>
+  <p style="margin-top:12px;">vira esta consulta. Latitude antes da longitude, com ponto. Em português, <code>-3,807</code> levaria vírgula e quebraria o parâmetro.</p>
+  <pre style="margin-top:8px;">GET /maps/api/geocode/json?latlng=-3.807,-38.54&amp;key=CHAVE</pre>
+</section>
+
+<section class="slide">
+  <p class="kicker">GeocodingService · a API</p>
+  <h2>O que entra na URL</h2>
+  <table>
+    <tr><th>Parâmetro</th><th>Origem</th><th>Função</th></tr>
+    <tr><td><code>latlng</code></td><td>Latitude e Longitude do MQTT</td><td>O ponto a resolver. Cultura invariante, para o ponto decimal.</td></tr>
+    <tr><td><code>key</code></td><td><code>GoogleMaps:ApiKey</code></td><td>Autoriza a Geocoding API.</td></tr>
+  </table>
+  <p style="margin-top:16px;">Não há <code>language</code>, <code>region</code> nem <code>result_type</code>. O Google escolhe o idioma e devolve a lista padrão, do endereço mais específico para o mais geral. Se o serviço de fundo para, o token de cancelamento do MQTT interrompe essa chamada.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">GeocodingService · a API</p>
+  <h2>A central lê dois campos</h2>
+  <div class="row">
+    <pre class="grow">{
+  "status": "OK",
+  "results": [{
+    "formatted_address": "Rua Exemplo, 100 - Messejana, Fortaleza - CE, Brasil",
+    "geometry": { "location": { "lat": -3.807, "lng": -38.54 } },
+    "place_id": "ChIJ...",
+    "types": ["street_address"]
+  }]
+}</pre>
+    <article class="card grow">
+      <h3>O que fica</h3>
+      <p><code>results[0].formatted_address</code>. Não há uma classe para o JSON: o código abre o documento e faz esses dois acessos.</p>
+      <h3 style="margin-top:12px;">O que se ignora</h3>
+      <p><code>address_components</code>, <code>geometry</code>, <code>place_id</code>, <code>types</code> e os resultados seguintes. O marcador continua na coordenada original do MQTT.</p>
+    </article>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">GeocodingService · a API</p>
+  <h2>O status do Google não é lido</h2>
+  <table>
+    <tr><th>status</th><th>O que significa</th><th>O que a central faz</th></tr>
+    <tr><td><code>OK</code></td><td>Há pelo menos um resultado</td><td>Usa o primeiro <code>formatted_address</code></td></tr>
+    <tr><td><code>ZERO_RESULTS</code></td><td>O ponto não tem endereço</td><td>Lista vazia, texto de falha</td></tr>
+    <tr><td><code>REQUEST_DENIED</code></td><td>A chave não tem a Geocoding API</td><td>HTTP 200 e <code>results</code> vazio. Mesmo texto</td></tr>
+    <tr><td><code>OVER_QUERY_LIMIT</code></td><td>A cota estourou</td><td>Mesmo texto de falha</td></tr>
+    <tr><td><code>INVALID_REQUEST</code></td><td><code>latlng</code> mal formado</td><td>Mesmo texto de falha</td></tr>
+  </table>
+</section>
+
+<section class="slide">
+  <p class="kicker">GeocodingService · falha</p>
+  <h2>A moto fica no mapa. A rua, não.</h2>
+  <table>
+    <tr><th>Situação</th><th>O que o código faz</th></tr>
+    <tr><td>Chave ausente no appsettings</td><td>Não chama o Google</td></tr>
+    <tr><td>HTTP fora de 2xx</td><td>Descarta o corpo</td></tr>
+    <tr><td>JSON sem <code>results</code>, ou lista vazia</td><td>Não há endereço</td></tr>
+    <tr><td><code>formatted_address</code> vazio ou ausente</td><td>Trata como falha</td></tr>
+    <tr><td>Rede, JSON inválido ou propriedade faltando</td><td>A exceção vira o mesmo texto</td></tr>
+  </table>
+  <p style="margin-top:14px;">Tudo isso aparece como <strong>Endereço não disponível</strong>. Não há nova tentativa, cache próprio nem fila. Uma chave que desenha o mapa pode não ter a Geocoding API liberada. Por isso o protótipo manda o endereço dentro do JSON quando quer o texto garantido.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado operacional</p>
+  <h2>Do booleano do MQTT até a ligação</h2>
+  <div class="split">
+    <div class="node" style="--i:0"><strong>Status false → rota</strong><span>Azul no mapa. Em rota.</span></div>
+    <div class="node" style="--i:1;border-top-color:var(--alert)"><strong>Status true → acidente</strong><span>Vermelho. Ainda sem pedido da pessoa.</span></div>
+  </div>
+  <div class="vlink"></div>
+  <div class="node" style="--i:2;border-top-color:#b54708"><strong>aguardando</strong><span>O WhatsApp foi enviado. O prazo de 5 minutos corre. Vale saindo de acidente, ou de rota se a queda ainda estiver detectada.</span></div>
+  <div class="vlink"></div>
+  <div class="grid g3">
+    <div class="node" style="--i:3;border-top-color:var(--ok)"><strong>Estou bem</strong><span>Volta para rota. A central não liga.</span></div>
+    <div class="node" style="--i:4;border-top-color:var(--alert)"><strong>Preciso de ajuda</strong><span>Situação ajuda. Peça para ligar. A central não disca.</span></div>
+    <div class="node" style="--i:5;border-top-color:var(--alert)"><strong>5 minutos em silêncio</strong><span>Situação expirada. O aviso de ligar é o mesmo.</span></div>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Estado operacional</p>
+  <h2>O que cada situação mostra</h2>
+  <table>
+    <tr><th>Situação</th><th>Significado</th><th>Cor no mapa</th></tr>
+    <tr><td><span class="pill blue">rota</span></td><td>Em rota. <code>Status</code> falso, ou a pessoa disse que está bem.</td><td>Azul #1d4e89</td></tr>
+    <tr><td><span class="pill red">acidente</span></td><td>Queda informada, ainda sem pedido de socorro da pessoa.</td><td>Vermelho #b42318</td></tr>
+    <tr><td><span class="pill amber">aguardando</span></td><td>Mensagem enviada, prazo correndo.</td><td>Laranja #b54708</td></tr>
+    <tr><td><span class="pill red">ajuda</span></td><td>A pessoa respondeu que precisa de ajuda.</td><td>Vermelho, com o aviso de ligar</td></tr>
+    <tr><td><span class="pill red">expirada</span></td><td>Os 5 minutos acabaram sem resposta.</td><td>Vermelho, com o aviso de ligar</td></tr>
+  </table>
+  <p class="muted" style="margin-top:10px;">O marcador é um círculo com o emoji de bicicleta. Acidente, ajuda e prazo estourado abrem um balão. Enquanto aguarda, o balão diz que a central espera a resposta.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fluxo de uma posição</p>
+  <h2>Da publicação até a tela</h2>
+  <div class="seqcol">
+    <div class="seqline" style="--i:0"><div class="dotn">1</div><p>O campo publica no tópico <code>DadosDeMonitoramento_TCC2</code>.</p></div>
+    <div class="seqline" style="--i:1"><div class="dotn">2</div><p>O HiveMQ entrega ao <code>MqttMonitorService</code>.</p></div>
+    <div class="seqline" style="--i:2"><div class="dotn">3</div><p>Se <code>Endereco</code> está vazio, o <code>GeocodingService</code> devolve o endereço formatado.</p></div>
+    <div class="seqline" style="--i:3"><div class="dotn">4</div><p>O store grava a leitura pela chave <code>User</code>.</p></div>
+    <div class="seqline" style="--i:4"><div class="dotn">5</div><p>A cada 5 segundos, <code>GET /Home/Estado</code>. O <code>OperacaoService</code> copia as posições e devolve situação, telefone e prazo.</p></div>
+  </div>
+  <p class="muted" style="margin-top:12px;">A cópia evita que “estou bem” altere o objeto original da memória ou a referência fixa da LUAPEREIRA.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fluxo do WhatsApp</p>
+  <h2>A chave só fala com quem autorizou</h2>
+  <div class="grid g2">
+    <article class="card"><h3>Onde se edita</h3><p>Telefone e chave ficam na Frota e em <code>data/contatos.json</code>. O mapa não edita esses campos.</p></article>
+    <article class="card"><h3>O número</h3><p>Aceita DDD com 10 ou 11 dígitos, ou já com 55. A central guarda só os dígitos, com 55 na frente.</p></article>
+  </div>
+  <p style="margin-top:14px;">No envio, se o CallMeBot recusar a chave para o celular com o nono dígito, a central tenta de novo sem esse 9. É o formato em que o WhatsApp brasileiro às vezes registra o número. A API é gratuita e de uso pessoal: não envia para um terceiro a partir da chave de outra pessoa.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fluxo do WhatsApp</p>
+  <h2>Pergunta, resposta, ou o silêncio</h2>
+  <div class="seqcol">
+    <div class="seqline" style="--i:0"><div class="dotn">1</div><p>O operador chama <code>POST /Home/Perguntar</code>.</p></div>
+    <div class="seqline" style="--i:1"><div class="dotn">2</div><p>O <code>OperacaoService</code> cria a confirmação por 5 minutos e faz GET em <code>api.callmebot.com/whatsapp.php</code>.</p></div>
+    <div class="seqline" style="--i:2"><div class="dotn">3</div><p>O motociclista recebe o texto e o link <code>/c/{id}</code>.</p></div>
+    <div class="seqline" style="--i:3"><div class="dotn">4</div><p>Estou bem volta para rota. Preciso de ajuda vira <code>ajuda</code>. Silêncio de 5 minutos vira <code>expirada</code> na próxima leitura.</p></div>
+  </div>
+  <p class="muted" style="margin-top:12px;">Se a resposta não contiver “Message queued”, a confirmação é apagada e o prazo não começa. A página <code>/c/{id}</code> não usa o menu da central. Fora do estado aguardando, a resposta não muda nada.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Fluxo do WhatsApp</p>
+  <h2>O link no celular e o link na central</h2>
+  <div class="grid g2">
+    <article class="card"><h3>O texto</h3><p>Pede para parar com segurança se estiver dirigindo. Avisa que, sem resposta em 5 minutos, a central liga para a emergência.</p></article>
+    <article class="card"><h3>O host do link</h3><p>É o host que atendeu o pedido. Em localhost, o celular recebe a mensagem, mas o link só abre no computador da central.</p></article>
+  </div>
+  <p style="margin-top:16px;">Enquanto a situação é <code>aguardando</code>, a ficha mostra <strong>Abrir como o motociclista</strong>, o mesmo endereço que iria no WhatsApp.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Telas</p>
+  <h2>O menu e o que cada uma mostra</h2>
+  <div class="grid g4">
+    <article class="card"><h3>Painel</h3><p>Motos em campo, acidentes ativos e em rota. A ocorrência traz acidente, espera, ajuda e prazo estourado.</p></article>
+    <article class="card"><h3>Mapa</h3><p>Os mesmos pontos. A lista da direita é só nome e situação.</p></article>
+    <article class="card"><h3>Frota</h3><p>Telefone, chave e o botão de enviar. Também aparecem na ficha da ocorrência.</p></article>
+    <article class="card"><h3>Emergência</h3><p>O protocolo do operador. Não dispara a ligação. O relógio da barra é só do navegador.</p></article>
+  </div>
+</section>
+
+<section class="slide">
+  <p class="kicker">Telas · Painel</p>
+  <h2>16 motos, um acidente, WhatsApp ainda aberto</h2>
+  <img class="shot" src="docs/telas/painel-ocorrencia.png" alt="Painel com o Pedro em acidente" />
+  <p class="caption">O Pedro ainda não respondeu. A ocorrência oferece telefone, chave e Enviar no WhatsApp. Os outros quinze estão em rota.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Telas · Mapa ao vivo</p>
+  <h2>O mesmo estado, lido de outro jeito</h2>
+  <img class="shot" src="docs/telas/mapa-ao-vivo.png" alt="Mapa com um marcador vermelho" />
+  <p class="caption">O balão repete nome, estado e endereço. A coluna da direita não edita número nem chave.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Telas · Decisão</p>
+  <h2>Precisa de ajuda, ou o prazo acabou</h2>
+  <img class="shot" src="docs/telas/pedido-emergencia.png" alt="Ocorrência pedindo para ligar" />
+  <p class="caption">A ficha deixa de oferecer outro envio e pede para ligar. Se o tempo acaba em silêncio, o rótulo é Sem resposta, e o aviso de ligar é o mesmo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Persistência</p>
+  <h2>O que reiniciar a central apaga</h2>
+  <table>
+    <tr><th>Dado</th><th>Onde</th><th>Sobrevive</th></tr>
+    <tr><td>Posição e Status do MQTT</td><td>MonitoramentoStore</td><td>Não</td></tr>
+    <tr><td>Telefone e chave do CallMeBot</td><td>data/contatos.json</td><td>Sim</td></tr>
+    <tr><td>Confirmações, no máximo as 30 mais recentes</td><td>data/contatos.json</td><td>Sim</td></tr>
+    <tr><td>Referência LUAPEREIRA</td><td>Código do store</td><td>Sim, é fixa</td></tr>
+  </table>
+  <p style="margin-top:14px;">Como a posição é memória, um reinício esvazia a frota publicada até chegar uma mensagem nova. A LUAPEREIRA continua, e a última confirmação dela continua valendo.</p>
+</section>
+
+<section class="slide">
+  <p class="kicker">Limites deste protótipo</p>
+  <h2>O que fica de fora de propósito</h2>
+  <div class="grid g3">
+    <article class="card"><h3>Broker público</h3><p>Qualquer cliente inscrito no tópico lê as mensagens. O tópico serve para teste, não para dado real de uma pessoa.</p></article>
+    <article class="card"><h3>CallMeBot</h3><p>Só entrega no WhatsApp que gerou a chave. Não envia para outra pessoa com a chave de alguém.</p></article>
+    <article class="card"><h3>Sem o sensor</h3><p>A central não calcula inclinação, não lê o MPU6050 e não disca. Ela recebe o estado, confirma e destaca a ocorrência para o operador ligar.</p></article>
+  </div>
+</section>
+
+</div>
+<footer class="foot">
+  <span>Central Moto · arquitetura do protótipo</span>
+  <span><button type="button" id="prev">←</button> <span id="count">1</span> <button type="button" id="next">→</button></span>
+</footer>
+<script>
+  const slides = Array.from(document.querySelectorAll(".slide"));
+  const count = document.getElementById("count");
+  let i = 0;
+  function show(n) {
+    i = (n + slides.length) % slides.length;
+    slides.forEach((s, k) => s.classList.toggle("on", k === i));
+    count.textContent = (i + 1) + " / " + slides.length;
+  }
+  document.getElementById("next").onclick = () => show(i + 1);
+  document.getElementById("prev").onclick = () => show(i - 1);
+  document.addEventListener("keydown", (e) => {
+    if (["ArrowRight", "PageDown", " "].includes(e.key)) { e.preventDefault(); show(i + 1); }
+    if (["ArrowLeft", "PageUp"].includes(e.key)) { e.preventDefault(); show(i - 1); }
+    if (e.key === "Home") show(0);
+    if (e.key === "End") show(slides.length - 1);
+  });
+  show(0);
+</script>
+</body>
+</html>
