@@ -1,3 +1,6 @@
 *
 !index.html
 !.gitignore
+!docs/
+!docs/telas/
+!docs/telas/*.png
